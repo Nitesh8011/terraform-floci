@@ -11,6 +11,7 @@ step() {
 
 step "FORMAT"
 terraform fmt
+step "FORMATTED"
 
 step "VALIDATE"
 terraform validate
