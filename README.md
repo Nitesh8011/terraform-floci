@@ -4,6 +4,19 @@ Learning Terraform against a **local AWS emulator (Floci)** instead of a real AW
 
 [Floci](https://floci.io/aws/) ([GitHub](https://github.com/floci-io/floci)) is a free, open-source local AWS emulator (a LocalStack-style alternative). It exposes AWS-compatible APIs on `http://localhost:4566`, so the AWS CLI, SDKs, and Terraform's `aws` provider can all talk to it as if it were real AWS — just point the endpoint at localhost and use dummy credentials.
 
+## What's in this repo
+
+| File | Purpose |
+|---|---|
+| [provider.tf](provider.tf) | `aws` provider (`~> 6.0`) pinned to the Floci endpoints for `s3` and `sts` |
+| [variable.tf](variable.tf) | Input variables: `region` (default `us-east-1`) and `bucket_name` (default `floci-bucket`) |
+| [s3.tf](s3.tf) | An `aws_s3_bucket` (named from `var.bucket_name` + account id + region) with versioning enabled |
+| [dynamodb.tf](dynamodb.tf) | A `PAY_PER_REQUEST` `aws_dynamodb_table` with a single string hash key |
+| [output.tf](output.tf) | Outputs the S3 bucket's ARN/domain name/region and the DynamoDB table name |
+| [run.sh](run.sh) | Convenience script that runs `terraform fmt`, `validate`, `plan`, and `apply` in sequence |
+
+State is currently local (`terraform.tfstate` in the repo root) — no S3/DynamoDB backend is configured yet.
+
 ## Prerequisites
 
 - **Docker** (and Docker Compose) — Floci runs service backends (Lambda, RDS, ECS, etc.) as real Docker containers
@@ -77,7 +90,7 @@ If that lists your new bucket, Floci is up and answering AWS API calls correctly
 
 ## 4. Point Terraform at Floci
 
-Terraform's `aws` provider needs to be told to hit `localhost:4566` for every service instead of real AWS, and to skip credential/region validation since Floci accepts dummy values. A typical `provider.tf`:
+Terraform's `aws` provider needs to be told to hit `localhost:4566` instead of real AWS, and to skip credential/region validation since Floci accepts dummy values. This repo's [provider.tf](provider.tf) does exactly that for the services it uses (`s3`, `sts`):
 
 ```hcl
 provider "aws" {
@@ -89,49 +102,17 @@ provider "aws" {
   skip_requesting_account_id  = true
 
   endpoints {
-    s3     = "http://localhost:4566"
-    lambda = "http://localhost:4566"
-    ec2    = "http://localhost:4566"
-    iam    = "http://localhost:4566"
-    # add other services here as you use them
+    s3  = "http://localhost:4566"
+    sts = "http://localhost:4566"
   }
 }
 ```
 
-### State storage: S3 only, no DynamoDB
+> Add more entries to the `endpoints` block (`lambda`, `ec2`, `iam`, `dynamodb`, ...) if you extend this config to use other services — the `aws_dynamodb_table` in [dynamodb.tf](dynamodb.tf) currently relies on the provider's default (real AWS) DynamoDB endpoint unless Floci intercepts it automatically for you.
 
-As of Terraform 1.11+, the S3 backend supports **native state locking** via `use_lockfile` — it writes a `.tflock` file alongside the state object using S3 conditional writes, so a separate DynamoDB lock table is no longer needed:
+## 5. Run it
 
-```hcl
-terraform {
-  backend "s3" {
-    bucket       = "my-floci-tf-state"
-    key          = "terraform-floci/terraform.tfstate"
-    region       = "us-east-1"
-    endpoints    = { s3 = "http://localhost:4566" }
-    use_lockfile = true
-
-    # Floci-only overrides so the backend talks to localhost instead of real AWS
-    access_key                  = "test"
-    secret_key                  = "test"
-    skip_credentials_validation = true
-    skip_metadata_api_check     = true
-    skip_requesting_account_id  = true
-    skip_region_validation      = true
-    use_path_style              = true
-  }
-}
-```
-
-Create the bucket in Floci before running `terraform init` (the backend won't create it for you):
-
-```bash
-aws s3 mb s3://my-floci-tf-state
-```
-
-> Requires Terraform **1.11+**. `dynamodb_table` is deprecated for locking — drop it if you're migrating an existing config, then run `terraform init -reconfigure`.
-
-Then the usual Terraform workflow works exactly like it would against real AWS:
+State here is **local** (`terraform.tfstate` in the repo root) — there's no S3/DynamoDB backend configured, so nothing extra needs to be created before `terraform init`. Override the defaults in [variable.tf](variable.tf) (`region`, `bucket_name`) with `-var` flags or a `.tfvars` file if you want.
 
 ```bash
 terraform init
@@ -139,7 +120,15 @@ terraform plan
 terraform apply
 ```
 
-## 5. Useful Floci commands
+Or run all of the above (plus `fmt`/`validate`) via the included script:
+
+```bash
+./run.sh
+```
+
+On success you'll get the outputs defined in [output.tf](output.tf): the S3 bucket's ARN/domain name/region, and the DynamoDB table name.
+
+## 6. Useful Floci commands
 
 | Command | Purpose |
 |---|---|
