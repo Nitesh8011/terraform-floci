@@ -7,6 +7,6 @@ output "s3_floci_bucket_info" {
 }
 
 
-output "first-dynamodb-name" {
-  value = aws_dynamodb_table.first-dynamodb.name
+output "all-dynamodb-table-names" {
+  value = [for t in aws_dynamodb_table.tables : t.name ]
 }

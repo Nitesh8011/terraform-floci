@@ -9,13 +9,15 @@ Learning Terraform against a **local AWS emulator (Floci)** instead of a real AW
 | File | Purpose |
 |---|---|
 | [provider.tf](provider.tf) | `aws` provider (`~> 6.0`) pinned to the Floci endpoints for `s3` and `sts` |
-| [variable.tf](variable.tf) | Input variables: `region` (default `us-east-1`) and `bucket_name` (default `floci-bucket`) |
+| [variables.tf](variables.tf) | Input variables: `region`, `bucket_name`, `dynamodb_table`, `dynamodb_billing_mode` |
 | [s3.tf](s3.tf) | An `aws_s3_bucket` (named from `var.bucket_name` + account id + region) with versioning enabled |
-| [dynamodb.tf](dynamodb.tf) | A `PAY_PER_REQUEST` `aws_dynamodb_table` with a single string hash key |
-| [output.tf](output.tf) | Outputs the S3 bucket's ARN/domain name/region and the DynamoDB table name |
+| [dynamodb.tf](dynamodb.tf) | One `aws_dynamodb_table` per entry in `var.table_names`, each with a single string hash key (`id`) |
+| [output.tf](output.tf) | Outputs the S3 bucket's ARN/domain name/region and the list of DynamoDB table names |
 | [run.sh](run.sh) | Convenience script that runs `terraform fmt`, `validate`, `plan`, and `apply` in sequence |
+| [production/production.tfvars](production/production.tfvars) | Var overrides for the `production` workspace (e.g. `dynamodb_billing_mode = "PROVISIONED"`) |
+| [staging/staging.tfvars](staging/staging.tfvars) | Var overrides for the `staging` workspace (e.g. `dynamodb_billing_mode = "PAY_PER_REQUEST"`) |
 
-State is currently local (`terraform.tfstate` in the repo root) — no S3/DynamoDB backend is configured yet.
+State is currently local (`terraform.tfstate` in the repo root) — no S3/DynamoDB backend is configured yet. Use `terraform workspace` (`staging`/`production`) with the matching `.tfvars` file to keep environments separate.
 
 ## Prerequisites
 
@@ -86,7 +88,7 @@ aws s3 mb s3://my-test-bucket
 aws s3 ls
 ```
 
-If that lists your new bucket, Floci is up and answering AWS API calls correctly.
+If that lists your new bucket, Floci is up and answering AWS API calls correctly. `aws s3 mb` here was just a smoke test — feel free to delete that bucket afterward.
 
 ## 4. Point Terraform at Floci
 
@@ -112,23 +114,43 @@ provider "aws" {
 
 ## 5. Run it
 
-State here is **local** (`terraform.tfstate` in the repo root) — there's no S3/DynamoDB backend configured, so nothing extra needs to be created before `terraform init`. Override the defaults in [variable.tf](variable.tf) (`region`, `bucket_name`) with `-var` flags or a `.tfvars` file if you want.
+State here is **local** (`terraform.tfstate` in the repo root) — there's no S3/DynamoDB backend configured, so nothing extra needs to be created before `terraform init`. Override the defaults in [variables.tf](variables.tf) (`region`, `bucket_name`, `dynamodb_table`, `dynamodb_billing_mode`, `table_names`) with `-var` flags or one of the provided `.tfvars` files.
 
 ```bash
 terraform init
-terraform plan
-terraform apply
+terraform plan -var-file=staging/staging.tfvars
+terraform apply -var-file=staging/staging.tfvars
 ```
 
-Or run all of the above (plus `fmt`/`validate`) via the included script:
+Swap in `production/production.tfvars` to target the production var set instead.
+
+Or run the default (no `-var-file`) plan/apply via the included script:
 
 ```bash
 ./run.sh
 ```
 
-On success you'll get the outputs defined in [output.tf](output.tf): the S3 bucket's ARN/domain name/region, and the DynamoDB table name.
+On success you'll get the outputs defined in [output.tf](output.tf): the S3 bucket's ARN/domain name/region, and the list of DynamoDB table names.
 
-## 6. Useful Floci commands
+## 6. Verify resources with the AWS CLI
+
+Once `terraform apply` finishes, point the AWS CLI at the same region you deployed to (`-var-file`'s `region`, e.g. `us-east-2` for staging) and check what actually got created:
+
+```bash
+# List all DynamoDB tables in the region
+aws dynamodb list-tables --region us-east-2
+
+# Inspect a specific table's attributes/key schema/billing mode
+aws dynamodb describe-table --table-name staging-table-1 --region us-east-2
+
+# List all S3 buckets
+aws s3 ls
+
+# Check which region a bucket lives in
+aws s3api get-bucket-location --bucket <bucket_name>
+```
+
+## 7. Useful Floci commands
 
 | Command | Purpose |
 |---|---|

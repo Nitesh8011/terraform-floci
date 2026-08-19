@@ -9,3 +9,13 @@ variable "bucket_name" {
   type        = string
   default     = "floci-bucket"
 }
+
+variable "dynamodb_table" {
+  description = "Dynamodb table name"
+  type        = string
+}
+
+variable "dynamodb_billing_mode" {
+  description = "Dynamodb billing mode"
+  type        = string
+}

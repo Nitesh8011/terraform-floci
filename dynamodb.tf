@@ -1,14 +1,23 @@
-resource "aws_dynamodb_table" "first-dynamodb" {
-  name         = "first-dynamodb-table"
-  hash_key     = "TestTableHashKey"
-  billing_mode = "PAY_PER_REQUEST"
+variable "table_names" {
+  type    = list(string)
+  default = ["orders", "users", "sessions"]
+}
+
+resource "aws_dynamodb_table" "tables" {
+  for_each     = toset(var.table_names)
+  name         = "${each.value}-table"
+  hash_key     = "id"
+  billing_mode = var.dynamodb_billing_mode
+  region       = var.region
+
   #   stream_enabled = true
   #   stream_view_type = "NEW_AND_OLD_IMAGES"
 
   attribute {
-    name = "TestTableHashKey"
+    name = "id"
     type = "S"
   }
+
   #   replica {
   #     region_name      = var.region
   #     consistency_mode = "STRONG"
