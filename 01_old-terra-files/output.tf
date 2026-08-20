@@ -10,3 +10,7 @@ output "s3_floci_bucket_info" {
 output "all-dynamodb-table-names" {
   value = [for t in aws_dynamodb_table.tables : t.name]
 }
+
+output "s3_floci_bucket_arn" {
+  value = module.module_bucket_config.arn
+}

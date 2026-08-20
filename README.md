@@ -9,15 +9,32 @@ Learning Terraform against a **local AWS emulator (Floci)** instead of a real AW
 | File | Purpose |
 |---|---|
 | [provider.tf](provider.tf) | `aws` provider (`~> 6.0`) pinned to the Floci endpoints for `s3` and `sts`, plus an `s3` backend block for remote state |
-| [variables.tf](variables.tf) | Input variables: `region`, `bucket_name`, `dynamodb_table`, `dynamodb_billing_mode` |
-| [s3.tf](s3.tf) | An `aws_s3_bucket` (named from `var.bucket_name` + account id + region) with versioning enabled |
-| [dynamodb.tf](dynamodb.tf) | One `aws_dynamodb_table` per entry in `var.table_names`, each with a single string hash key (`id`) |
-| [output.tf](output.tf) | Outputs the S3 bucket's ARN/domain name/region and the list of DynamoDB table names |
+| [backend.tf](backend.tf) | Root module: looks up the current account id and calls the `s3_bucket` module to create the (versioned) bucket |
+| [variables.tf](variables.tf) | Root input variables: `region`, `bucket_name` |
+| [modules/s3_bucket/](modules/s3_bucket/) | Reusable module: `main.tf` (bucket + versioning), `variable.tf` (`bucket_name`, `region`, `version_status`), `output.tf` (`arn`) |
 | [run.sh](run.sh) | Convenience script that runs `terraform fmt`, `validate`, `plan`, and `apply` in sequence |
-| [production/production.tfvars](production/production.tfvars) | Var overrides for the `production` workspace (e.g. `dynamodb_billing_mode = "PROVISIONED"`) |
-| [staging/staging.tfvars](staging/staging.tfvars) | Var overrides for the `staging` workspace (e.g. `dynamodb_billing_mode = "PAY_PER_REQUEST"`) |
+| [production/production.tfvars](production/production.tfvars) | Var overrides for the `production` workspace |
+| [staging/staging.tfvars](staging/staging.tfvars) | Var overrides for the `staging` workspace |
+| [01_old-terra-files/](01_old-terra-files/) | Pre-module flat config (`s3.tf`, `dynamodb.tf`, `output.tf`, `variables.tf`) kept for reference; excluded from `terraform` via [.terraformignore](.terraformignore) |
 
 State is stored remotely in an S3 bucket (`floci-tf-state-bucket`, in Floci) via the `backend "s3"` block in [provider.tf](provider.tf), using native S3 state locking (`use_lockfile = true`) instead of a DynamoDB lock table. Use `terraform workspace` (`staging`/`production`) with the matching `.tfvars` file to keep environments separate — each workspace gets its own state within that same bucket.
+
+### The `s3_bucket` module
+
+The root config no longer creates the S3 bucket directly — [backend.tf](backend.tf) delegates to [modules/s3_bucket](modules/s3_bucket/):
+
+```hcl
+data "aws_caller_identity" "current" {}
+
+module "module_bucket_config" {
+  source         = "./modules/s3_bucket"
+  bucket_name    = format("%s-%s-%s-an", var.bucket_name, data.aws_caller_identity.current.account_id, var.region)
+  region         = var.region
+  version_status = "Enabled"
+}
+```
+
+The module itself (`modules/s3_bucket/main.tf`) creates the `aws_s3_bucket` and an `aws_s3_bucket_versioning` resource set to `var.version_status`, and exposes the bucket's `arn` as a module output. This makes the bucket reusable — e.g. calling the module a second time with different `bucket_name`/`region` inputs to stand up another bucket, without duplicating the versioning boilerplate.
 
 ## Prerequisites
 
@@ -110,7 +127,7 @@ provider "aws" {
 }
 ```
 
-> Add more entries to the `endpoints` block (`lambda`, `ec2`, `iam`, `dynamodb`, ...) if you extend this config to use other services — the `aws_dynamodb_table` in [dynamodb.tf](dynamodb.tf) currently relies on the provider's default (real AWS) DynamoDB endpoint unless Floci intercepts it automatically for you.
+> Add more entries to the `endpoints` block (`lambda`, `ec2`, `iam`, `dynamodb`, ...) if you extend this config to use other services. The archived [01_old-terra-files/dynamodb.tf](01_old-terra-files/dynamodb.tf) is a reference for a DynamoDB table resource, but it's not wired into the current root module.
 
 ### Backend: S3 state, no DynamoDB lock table
 
@@ -144,9 +161,15 @@ backend "s3" {
 aws s3 mb s3://floci-tf-state-bucket
 ```
 
+Enable versioning on it too — this keeps prior state file versions around so a corrupted or bad `apply` can be rolled back:
+
+```bash
+aws s3api put-bucket-versioning --bucket floci-tf-state-bucket --versioning-configuration Status=Enabled
+```
+
 ## 5. Run it
 
-Override the defaults in [variables.tf](variables.tf) (`region`, `bucket_name`, `dynamodb_table`, `dynamodb_billing_mode`, `table_names`) with `-var` flags or one of the provided `.tfvars` files.
+Override the defaults in [variables.tf](variables.tf) (`region`, `bucket_name`) with `-var` flags or one of the provided `.tfvars` files.
 
 ```bash
 terraform init
@@ -156,30 +179,29 @@ terraform apply -var-file=staging/staging.tfvars
 
 Swap in `production/production.tfvars` to target the production var set instead.
 
+> The `.tfvars` files still carry `dynamodb_table` / `dynamodb_billing_mode` / `table_names` entries left over from before the module refactor — Terraform will just warn about undeclared variables for those since the root module (`variables.tf`) only declares `region` and `bucket_name` now. Safe to ignore, or trim those lines if they bother you.
+
 Or run the default (no `-var-file`) plan/apply via the included script:
 
 ```bash
 ./run.sh
 ```
 
-On success you'll get the outputs defined in [output.tf](output.tf): the S3 bucket's ARN/domain name/region, and the list of DynamoDB table names.
+On success you'll get the `arn` output from the `module_bucket_config` module (the S3 bucket's ARN).
 
 ## 6. Verify resources with the AWS CLI
 
 Once `terraform apply` finishes, point the AWS CLI at the same region you deployed to (`-var-file`'s `region`, e.g. `us-east-2` for staging) and check what actually got created:
 
 ```bash
-# List all DynamoDB tables in the region
-aws dynamodb list-tables --region us-east-2
-
-# Inspect a specific table's attributes/key schema/billing mode
-aws dynamodb describe-table --table-name staging-table-1 --region us-east-2
-
 # List all S3 buckets
 aws s3 ls
 
 # Check which region a bucket lives in
 aws s3api get-bucket-location --bucket <bucket_name>
+
+# Confirm versioning is enabled
+aws s3api get-bucket-versioning --bucket <bucket_name>
 ```
 
 ## 7. Useful Floci commands
@@ -194,5 +216,5 @@ aws s3api get-bucket-location --bucket <bucket_name>
 ## Notes
 
 - Credentials are dummy values (`test`/`test`) — Floci doesn't authenticate by default, so never point real AWS credentials at it.
-- Not every AWS API has 100% parity (complex services like DynamoDB have known gaps) — treat this as a fast local feedback loop for learning/testing Terraform, not a guarantee of production behavior.
+- Not every AWS API has 100% parity (complex services like DynamoDB, referenced in [01_old-terra-files/](01_old-terra-files/), have known gaps) — treat this as a fast local feedback loop for learning/testing Terraform, not a guarantee of production behavior.
 - Remember to run `floci stop` when you're done to free up the Docker containers it spun up.
