@@ -8,7 +8,7 @@ Learning Terraform against a **local AWS emulator (Floci)** instead of a real AW
 
 | File | Purpose |
 |---|---|
-| [provider.tf](provider.tf) | `aws` provider (`~> 6.0`) pinned to the Floci endpoints for `s3` and `sts` |
+| [provider.tf](provider.tf) | `aws` provider (`~> 6.0`) pinned to the Floci endpoints for `s3` and `sts`, plus an `s3` backend block for remote state |
 | [variables.tf](variables.tf) | Input variables: `region`, `bucket_name`, `dynamodb_table`, `dynamodb_billing_mode` |
 | [s3.tf](s3.tf) | An `aws_s3_bucket` (named from `var.bucket_name` + account id + region) with versioning enabled |
 | [dynamodb.tf](dynamodb.tf) | One `aws_dynamodb_table` per entry in `var.table_names`, each with a single string hash key (`id`) |
@@ -17,7 +17,7 @@ Learning Terraform against a **local AWS emulator (Floci)** instead of a real AW
 | [production/production.tfvars](production/production.tfvars) | Var overrides for the `production` workspace (e.g. `dynamodb_billing_mode = "PROVISIONED"`) |
 | [staging/staging.tfvars](staging/staging.tfvars) | Var overrides for the `staging` workspace (e.g. `dynamodb_billing_mode = "PAY_PER_REQUEST"`) |
 
-State is currently local (`terraform.tfstate` in the repo root) — no S3/DynamoDB backend is configured yet. Use `terraform workspace` (`staging`/`production`) with the matching `.tfvars` file to keep environments separate.
+State is stored remotely in an S3 bucket (`floci-tf-state-bucket`, in Floci) via the `backend "s3"` block in [provider.tf](provider.tf), using native S3 state locking (`use_lockfile = true`) instead of a DynamoDB lock table. Use `terraform workspace` (`staging`/`production`) with the matching `.tfvars` file to keep environments separate — each workspace gets its own state within that same bucket.
 
 ## Prerequisites
 
@@ -112,9 +112,41 @@ provider "aws" {
 
 > Add more entries to the `endpoints` block (`lambda`, `ec2`, `iam`, `dynamodb`, ...) if you extend this config to use other services — the `aws_dynamodb_table` in [dynamodb.tf](dynamodb.tf) currently relies on the provider's default (real AWS) DynamoDB endpoint unless Floci intercepts it automatically for you.
 
+### Backend: S3 state, no DynamoDB lock table
+
+[provider.tf](provider.tf) also configures a `backend "s3"` block, so `terraform init` stores state remotely instead of in a local `terraform.tfstate` file:
+
+```hcl
+backend "s3" {
+  bucket = "floci-tf-state-bucket"
+  key    = "terraform-floci/terraform.tfstate"
+  region = "us-east-1"
+  endpoints = {
+    s3 = "http://localhost:4566"
+  }
+  use_lockfile = true
+
+  access_key                  = "test"
+  secret_key                  = "test"
+  skip_credentials_validation = true
+  skip_metadata_api_check     = true
+  skip_region_validation      = true
+  skip_requesting_account_id  = true
+  use_path_style              = true
+}
+```
+
+`use_lockfile` uses the S3 backend's native locking (Terraform 1.11+) — it writes a `.tflock` file alongside the state object via S3 conditional writes, so no separate DynamoDB lock table is needed.
+
+**Create the state bucket in Floci before running `terraform init`** — the backend won't create it for you:
+
+```bash
+aws s3 mb s3://floci-tf-state-bucket
+```
+
 ## 5. Run it
 
-State here is **local** (`terraform.tfstate` in the repo root) — there's no S3/DynamoDB backend configured, so nothing extra needs to be created before `terraform init`. Override the defaults in [variables.tf](variables.tf) (`region`, `bucket_name`, `dynamodb_table`, `dynamodb_billing_mode`, `table_names`) with `-var` flags or one of the provided `.tfvars` files.
+Override the defaults in [variables.tf](variables.tf) (`region`, `bucket_name`, `dynamodb_table`, `dynamodb_billing_mode`, `table_names`) with `-var` flags or one of the provided `.tfvars` files.
 
 ```bash
 terraform init
