@@ -9,9 +9,10 @@ Learning Terraform against a **local AWS emulator (Floci)** instead of a real AW
 | File | Purpose |
 |---|---|
 | [provider.tf](provider.tf) | `aws` provider (`~> 6.0`) pinned to the Floci endpoints for `s3` and `sts`, plus an `s3` backend block for remote state |
-| [backend.tf](backend.tf) | Root module: looks up the current account id and calls the `s3_bucket` module to create the (versioned) bucket |
-| [variables.tf](variables.tf) | Root input variables: `region`, `bucket_name` |
+| [backend.tf](backend.tf) | Root module: looks up the current account id, calls the `s3_bucket` module to create the (versioned) bucket, and calls the `dynamodb_table` module to create the DynamoDB tables |
+| [variables.tf](variables.tf) | Root input variables: `region`, `bucket_name`, `billing_mode`, `table_names` |
 | [modules/s3_bucket/](modules/s3_bucket/) | Reusable module: `main.tf` (bucket + versioning), `variable.tf` (`bucket_name`, `region`, `version_status`), `output.tf` (`arn`) |
+| [modules/dynamodb_table/](modules/dynamodb_table/) | Reusable module: `main.tf` (one `aws_dynamodb_table` per entry in `module_table_names`, via `for_each`), `variable.tf` (`module_table_names`, `module_billing_mode`, `module_region`), `output.tf` (`module_dynamodb_table_arn`, `module_dynamodb_table_name`) |
 | [run.sh](run.sh) | Convenience script that runs `terraform fmt`, `validate`, `plan`, and `apply` in sequence |
 | [production/production.tfvars](production/production.tfvars) | Var overrides for the `production` workspace |
 | [staging/staging.tfvars](staging/staging.tfvars) | Var overrides for the `staging` workspace |
@@ -28,13 +29,30 @@ data "aws_caller_identity" "current" {}
 
 module "module_bucket_config" {
   source         = "./modules/s3_bucket"
-  bucket_name    = format("%s-%s-%s-an", var.bucket_name, data.aws_caller_identity.current.account_id, var.region)
+  bucket_name    = format("%s-%s-%s", var.bucket_name, data.aws_caller_identity.current.account_id, var.region)
   region         = var.region
   version_status = "Enabled"
 }
 ```
 
 The module itself (`modules/s3_bucket/main.tf`) creates the `aws_s3_bucket` and an `aws_s3_bucket_versioning` resource set to `var.version_status`, and exposes the bucket's `arn` as a module output. This makes the bucket reusable — e.g. calling the module a second time with different `bucket_name`/`region` inputs to stand up another bucket, without duplicating the versioning boilerplate.
+
+### The `dynamodb_table` module
+
+[backend.tf](backend.tf) also calls [modules/dynamodb_table](modules/dynamodb_table/) to create one or more DynamoDB tables:
+
+```hcl
+module "module_dynamodb_table_config" {
+  source              = "./modules/dynamodb_table"
+  module_table_names  = var.table_names
+  module_billing_mode = var.billing_mode
+  module_region       = var.region
+}
+```
+
+The module (`modules/dynamodb_table/main.tf`) uses `for_each` over `module_table_names` to create one `aws_dynamodb_table` per name, all sharing the same hash key (`ModuleTableHashKey`, type `S`) and `module_billing_mode`, and exposes each table's `arn`/`name` as list outputs. Root defaults live in [variables.tf](variables.tf): `billing_mode = "PAY_PER_REQUEST"`, `table_names = ["module-table-1", "module-table-2", "module-table-3"]`.
+
+> [provider.tf](provider.tf)'s `endpoints` block doesn't yet include a `dynamodb` entry — add one pointed at `http://localhost:4566` before applying this module against Floci.
 
 ## Prerequisites
 
@@ -127,7 +145,7 @@ provider "aws" {
 }
 ```
 
-> Add more entries to the `endpoints` block (`lambda`, `ec2`, `iam`, `dynamodb`, ...) if you extend this config to use other services. The archived [01_old-terra-files/dynamodb.tf](01_old-terra-files/dynamodb.tf) is a reference for a DynamoDB table resource, but it's not wired into the current root module.
+> Add more entries to the `endpoints` block (`lambda`, `ec2`, `iam`, `dynamodb`, ...) if you extend this config to use other services — including `dynamodb`, needed by the [modules/dynamodb_table](modules/dynamodb_table/) module below.
 
 ### Backend: S3 state, no DynamoDB lock table
 
@@ -179,7 +197,7 @@ terraform apply -var-file=staging/staging.tfvars
 
 Swap in `production/production.tfvars` to target the production var set instead.
 
-> The `.tfvars` files still carry `dynamodb_table` / `dynamodb_billing_mode` / `table_names` entries left over from before the module refactor — Terraform will just warn about undeclared variables for those since the root module (`variables.tf`) only declares `region` and `bucket_name` now. Safe to ignore, or trim those lines if they bother you.
+> The `.tfvars` files still carry `dynamodb_table` / `dynamodb_billing_mode` entries left over from before the module refactor — Terraform will just warn about undeclared variables for those since the root module (`variables.tf`) declares `billing_mode` (not `dynamodb_billing_mode`) and has no `dynamodb_table` variable at all. `table_names` is fine — it's declared and used by the `dynamodb_table` module. Safe to ignore the warnings, or trim those two stale lines if they bother you.
 
 Or run the default (no `-var-file`) plan/apply via the included script:
 
@@ -187,7 +205,7 @@ Or run the default (no `-var-file`) plan/apply via the included script:
 ./run.sh
 ```
 
-On success you'll get the `arn` output from the `module_bucket_config` module (the S3 bucket's ARN).
+On success you'll get the `arn` output from the `module_bucket_config` module (the S3 bucket's ARN), plus `module_dynamodb_table_arn` / `module_dynamodb_table_name` from `module_dynamodb_table_config` (one entry per table in `table_names`).
 
 ## 6. Verify resources with the AWS CLI
 
@@ -216,5 +234,5 @@ aws s3api get-bucket-versioning --bucket <bucket_name>
 ## Notes
 
 - Credentials are dummy values (`test`/`test`) — Floci doesn't authenticate by default, so never point real AWS credentials at it.
-- Not every AWS API has 100% parity (complex services like DynamoDB, referenced in [01_old-terra-files/](01_old-terra-files/), have known gaps) — treat this as a fast local feedback loop for learning/testing Terraform, not a guarantee of production behavior.
+- Not every AWS API has 100% parity — treat this as a fast local feedback loop for learning/testing Terraform, not a guarantee of production behavior.
 - Remember to run `floci stop` when you're done to free up the Docker containers it spun up.
