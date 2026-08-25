@@ -1,6 +1,6 @@
 # s3 bucket info
 region      = "us-east-2"
-bucket_name = "floci-staging"
+bucket_name = "floci"
 
 # dynamodb info
 billing_mode = "PAY_PER_REQUEST"
