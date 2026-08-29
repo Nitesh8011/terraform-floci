@@ -18,7 +18,7 @@ module "module_dynamodb_table_config" {
 
 module "module_sqs_queue_config" {
   source                           = "./modules/sqs"
-  module_sqs_name                  = format("%s-%s-%s-queue", var.sqs_name, terraform.workspace, var.region)
+  module_sqs_name                  = var.sqs_name
   module_delay_seconds             = var.module_delay_seconds
   module_max_message_size          = var.module_max_message_size
   module_region                    = var.region

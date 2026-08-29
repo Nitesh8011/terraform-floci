@@ -1,5 +1,6 @@
 resource "aws_sqs_queue" "floci_queue" {
-  name                      = var.module_sqs_name
+  for_each                  = toset(var.module_sqs_name)
+  name                      = format("floci-%s-%s-queue.fifo", each.value, terraform.workspace)
   region                    = var.module_region
   fifo_queue                = true
   delay_seconds             = var.module_delay_seconds

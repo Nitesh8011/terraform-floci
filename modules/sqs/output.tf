@@ -1,8 +1,8 @@
 output "queue_name" {
-  value = aws_sqs_queue.floci_queue.name
+  value = [for q in aws_sqs_queue.floci_queue : q.name]
 }
 
 
 output "queue_arn" {
-  value = aws_sqs_queue.floci_queue.arn
+  value = [for q in aws_sqs_queue.floci_queue : q.arn]
 }

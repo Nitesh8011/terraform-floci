@@ -3,7 +3,7 @@ variable "module_region" {
 }
 
 variable "module_sqs_name" {
-  type = string
+  type = list(string)
 }
 
 variable "module_delay_seconds" {
