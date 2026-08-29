@@ -1,7 +1,7 @@
 data "aws_caller_identity" "current" {}
 
 resource "aws_s3_bucket" "module_bucket" {
-  bucket = var.bucket_name
+  bucket = format("%s-%s-%s-%s", var.bucket_name, terraform.workspace, data.aws_caller_identity.current.account_id, var.region)
   region = var.region
 }
 
