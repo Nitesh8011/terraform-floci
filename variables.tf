@@ -14,7 +14,7 @@ variable "billing_mode" {
 }
 
 variable "table_names" {
-  type    = list(string)
+  type = list(string)
 }
 
 variable "module_delay_seconds" {
@@ -31,4 +31,9 @@ variable "module_message_retention_seconds" {
 
 variable "module_receive_wait_time_seconds" {
   type = string
+}
+
+variable "sqs_name" {
+  type = list(string)
+
 }

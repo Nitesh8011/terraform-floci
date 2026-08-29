@@ -2,6 +2,10 @@ variable "module_region" {
   type = string
 }
 
+variable "module_sqs_name" {
+  type = string
+}
+
 variable "module_delay_seconds" {
   type = string
 }

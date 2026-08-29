@@ -7,6 +7,7 @@ billing_mode = "PAY_PER_REQUEST"
 table_names  = ["users", "sessions", "audit-log"]
 
 # sqs into
+sqs_name                         = ["user", "sessions", "audit-log"]
 module_delay_seconds             = "90"
 module_max_message_size          = 2048
 module_message_retention_seconds = 86400
