@@ -20,3 +20,19 @@ variable "table_names" {
   type    = list(string)
   default = ["module-table-1", "module-table-2", "module-table-3"]
 }
+
+variable "module_delay_seconds" {
+  type = string
+}
+
+variable "module_max_message_size" {
+  type = string
+}
+
+variable "module_message_retention_seconds" {
+  type = string
+}
+
+variable "module_receive_wait_time_seconds" {
+  type = string
+}

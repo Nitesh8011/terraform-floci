@@ -5,3 +5,9 @@ bucket_name = "floci"
 # dynamodb info
 billing_mode = "PROVISIONED"
 table_names  = ["orders", "users", "sessions", "audit-log"]
+
+# sqs into
+module_delay_seconds             = "180"
+module_max_message_size          = 4096
+module_message_retention_seconds = 86400
+module_receive_wait_time_seconds = 30

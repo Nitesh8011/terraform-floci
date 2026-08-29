@@ -14,3 +14,13 @@ module "module_dynamodb_table_config" {
   module_billing_mode = var.billing_mode
   module_region       = var.region
 }
+
+
+module "module_sqs_queue_config" {
+  source                           = "./modules/sqs"
+  module_delay_seconds             = var.module_delay_seconds
+  module_max_message_size          = var.module_max_message_size
+  module_region                    = var.region
+  module_message_retention_seconds = var.module_message_retention_seconds
+  module_receive_wait_time_seconds = var.module_receive_wait_time_seconds
+}
