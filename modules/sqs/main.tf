@@ -1,6 +1,6 @@
 resource "aws_sqs_queue" "floci_queue" {
   for_each                  = toset(var.module_sqs_name)
-  name                      = "${each.value}-${var.module_name_suffix}.fifo"
+  name                      = "${each.value}-${var.module_name_suffix}-queue.fifo"
   region                    = var.module_region
   fifo_queue                = true
   delay_seconds             = var.module_delay_seconds
