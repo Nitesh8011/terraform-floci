@@ -117,6 +117,26 @@ floci status
 floci doctor
 ```
 
+### ⚠️ Persisting Floci's data across `stop`/`start`
+
+**By default, `floci start` does NOT reuse your old data.** Every time you run it, Floci **removes the previous container and creates a brand new one** (you'll see "Removing stopped container 'floci'..." in the output) — and since a plain `floci start` stores everything in that container's own anonymous volume, a new container means an empty one. Run `floci stop` then `floci start` with no extra flags, and every bucket, table, and queue you created is gone for good — including, critically, the `floci-tf-state-bucket` this repo's Terraform backend depends on.
+
+(There's also a `floci snapshot save`/`restore` pair documented for exactly this use case, but on the version this repo was built against it errors with `"Snapshot API not available on this server version"` — don't rely on it without checking your own `floci --version` first.)
+
+**The fix: `--persist=<dir>`, a flag `floci start` supports natively.** It binds Floci's state to a real folder on your host filesystem instead of a throwaway container volume, so the data survives container recreation:
+
+```bash
+mkdir -p .floci-data       # do this once; already gitignored
+floci start --persist=$(pwd)/.floci-data
+```
+
+From then on, always start Floci with that same `--persist` path (an alias helps, since it's easy to forget):
+```bash
+alias floci-start='floci start --persist=/Users/nitesh/Documents/git/terraform-floci/.floci-data'
+```
+
+If you ever *do* lose Floci's data (forgot `--persist`, wiped the folder, etc.), recovery is: recreate the state bucket (`aws s3 mb s3://floci-tf-state-bucket`), then `terraform init` and `terraform apply` again per workspace — your `.tf` code doesn't need to change, Terraform just rebuilds everything from scratch since, as far as it's concerned, nothing exists anymore.
+
 ### Alternative: run via Docker directly (no CLI install)
 
 ```bash
@@ -255,12 +275,13 @@ aws sqs list-queues
 |---|---|
 | `floci status` | Check whether the emulator is running |
 | `floci logs --follow` | Tail live logs |
-| `floci snapshot save` / `floci snapshot restore` | Persist and reload emulator state between sessions |
-| `floci stop` | Shut the emulator down |
+| `floci start --persist=<dir>` | Start with state bound to a host folder, so `stop`/`start` doesn't wipe it (see above) |
+| `floci snapshot save` / `floci snapshot restore` | *Documented*, but returned `"Snapshot API not available on this server version"` when tested against this repo's Floci version — use `--persist` instead |
+| `floci stop` | Shut the emulator down (safe to do — with `--persist`, data survives; without it, this wipes everything) |
 
 ## Notes
 
 - Credentials are dummy values (`test`/`test`) — Floci doesn't authenticate by default, so never point real AWS credentials at it.
 - Not every AWS API has 100% parity — treat this as a fast local feedback loop for learning/testing Terraform, not a guarantee of production behavior.
 - `terraform.workspace` is now baked into both the S3 bucket name and the SQS queue names, so `staging` and `production` resources are guaranteed not to collide even though they share the same `bucket_name`/`sqs_name` base values in their respective `.tfvars` files.
-- Remember to run `floci stop` when you're done to free up the Docker containers it spun up.
+- Remember to run `floci stop` when you're done to free up the Docker containers it spun up — just make sure you started it with `--persist` first if you want your buckets/tables/queue to still be there next time (see [Persisting Floci's data](#️-persisting-flocis-data-across-stopstart) above). Learned this one the hard way: a plain `floci start` after `floci stop` wiped the state bucket and every resource in this repo, requiring a full re-apply from scratch.

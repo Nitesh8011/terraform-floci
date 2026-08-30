@@ -9,3 +9,7 @@ variable "module_billing_mode" {
 variable "module_region" {
   type = string
 }
+
+variable "module_name_suffix" {
+  type = string
+}

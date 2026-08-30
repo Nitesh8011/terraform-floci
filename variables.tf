@@ -35,5 +35,4 @@ variable "module_receive_wait_time_seconds" {
 
 variable "sqs_name" {
   type = list(string)
-
 }

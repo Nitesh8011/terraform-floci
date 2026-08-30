@@ -9,3 +9,7 @@ variable "region" {
 variable "version_status" {
   type = string
 }
+
+variable "module_name_suffix" {
+  type = string
+}

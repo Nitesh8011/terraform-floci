@@ -1,4 +1,7 @@
 .terraform
 *.tfstate
 *.tfstate.backup
+.terraform.lock.hcl.floci-data
 .terraform.lock.hcl
+
+.floci-data

@@ -1,6 +1,6 @@
 resource "aws_dynamodb_table" "module_dynamodb_table" {
   for_each     = toset(var.module_table_names)
-  name         = each.value
+  name         = "${each.value}-${var.module_name_suffix}"
   hash_key     = "ModuleTableHashKey"
   billing_mode = var.module_billing_mode
   region       = var.module_region

@@ -1,10 +1,15 @@
 data "aws_caller_identity" "current" {}
 
+locals {
+  name_suffix = "floci-${data.aws_caller_identity.current.account_id}-${var.region}-${terraform.workspace}"
+}
+
 module "module_bucket_config" {
-  source         = "./modules/s3_bucket"
-  bucket_name    = var.bucket_name
-  region         = var.region
-  version_status = "Enabled"
+  source             = "./modules/s3_bucket"
+  bucket_name        = "${var.bucket_name}-${local.name_suffix}-bucket"
+  region             = var.region
+  version_status     = "Enabled"
+  module_name_suffix = local.name_suffix
 }
 
 
@@ -13,6 +18,7 @@ module "module_dynamodb_table_config" {
   module_table_names  = var.table_names
   module_billing_mode = var.billing_mode
   module_region       = var.region
+  module_name_suffix  = local.name_suffix
 }
 
 
@@ -24,4 +30,5 @@ module "module_sqs_queue_config" {
   module_region                    = var.region
   module_message_retention_seconds = var.module_message_retention_seconds
   module_receive_wait_time_seconds = var.module_receive_wait_time_seconds
+  module_name_suffix               = local.name_suffix
 }

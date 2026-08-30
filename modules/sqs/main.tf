@@ -1,6 +1,6 @@
 resource "aws_sqs_queue" "floci_queue" {
   for_each                  = toset(var.module_sqs_name)
-  name                      = format("floci-%s-%s-queue.fifo", each.value, terraform.workspace)
+  name                      = "${each.value}-${var.module_name_suffix}.fifo"
   region                    = var.module_region
   fifo_queue                = true
   delay_seconds             = var.module_delay_seconds

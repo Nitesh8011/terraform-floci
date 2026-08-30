@@ -21,3 +21,7 @@ variable "module_message_retention_seconds" {
 variable "module_receive_wait_time_seconds" {
   type = string
 }
+
+variable "module_name_suffix" {
+  type = string
+}
