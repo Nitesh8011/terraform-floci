@@ -24,6 +24,7 @@ module "module_dynamodb_table_config" {
 
 module "module_sqs_queue_config" {
   source                           = "./modules/sqs"
+  module_bucket_arn                = module.module_bucket_config.arn
   module_sqs_name                  = var.sqs_name
   module_delay_seconds             = var.module_delay_seconds
   module_max_message_size          = var.module_max_message_size
@@ -31,4 +32,15 @@ module "module_sqs_queue_config" {
   module_message_retention_seconds = var.module_message_retention_seconds
   module_receive_wait_time_seconds = var.module_receive_wait_time_seconds
   module_name_suffix               = local.name_suffix
+}
+
+resource "aws_s3_bucket_notification" "bucket_upload_notification" {
+  bucket = module.module_bucket_config.id
+
+  queue {
+    queue_arn = module.module_sqs_queue_config.queue_arn_by_name[var.upload_queue_name]
+    events    = ["s3:ObjectCreated:*"]
+  }
+
+  depends_on = [module.module_sqs_queue_config]
 }

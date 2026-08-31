@@ -25,3 +25,7 @@ variable "module_receive_wait_time_seconds" {
 variable "module_name_suffix" {
   type = string
 }
+
+variable "module_bucket_arn" {
+  type = string
+}

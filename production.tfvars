@@ -12,3 +12,4 @@ module_max_message_size          = 4096
 module_delay_seconds             = "180"
 module_message_retention_seconds = 86400
 module_receive_wait_time_seconds = 30
+upload_queue_name = "sessions"

@@ -36,3 +36,8 @@ variable "module_receive_wait_time_seconds" {
 variable "sqs_name" {
   type = list(string)
 }
+
+variable "upload_queue_name" {
+  description = "Which entry in sqs_name should receive S3 upload notifications"
+  type        = string
+}
