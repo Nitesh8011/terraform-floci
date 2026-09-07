@@ -9,14 +9,22 @@ resource "aws_sqs_queue" "floci_queue" {
   receive_wait_time_seconds = var.module_receive_wait_time_seconds
 }
 
+resource "time_sleep" "wait_for_queue" {
+  for_each        = aws_sqs_queue.floci_queue
+  depends_on      = [aws_sqs_queue.floci_queue]
+  create_duration = "5s"
+}
+
 resource "aws_sqs_queue_policy" "s3uploadqueuepolicy" {
-  for_each = aws_sqs_queue.floci_queue
-  queue_url = each.value.id
+  for_each   = aws_sqs_queue.floci_queue
+  queue_url  = each.value.id
+  region     = var.module_region
+  depends_on = [aws_sqs_queue.floci_queue]
 
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid    = "abcd"
+      Sid    = "s3uploadqueue"
       Effect = "Allow"
       Principal = {
         Service = "s3.amazonaws.com"
