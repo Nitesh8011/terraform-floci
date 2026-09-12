@@ -13,7 +13,6 @@ terraform {
     endpoints = {
       s3 = "http://localhost:4566"
     }
-    use_lockfile = true
 
     access_key                  = "test"
     secret_key                  = "test"
